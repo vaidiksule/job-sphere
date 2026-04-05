@@ -1,26 +1,98 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f4efe5;
+  --paper: #fbf7f1;
+  --card: rgba(255, 250, 241, 0.84);
+  --card-strong: #fff8ec;
+  --ink: #1e241a;
+  --muted: #66705d;
+  --line: rgba(42, 56, 34, 0.14);
+  --olive: #5f6f52;
+  --sage: #9db28e;
+  --accent: #e88c55;
+  --accent-soft: #f4c8a7;
+  --gold: #d7c268;
+  --danger: #b6543c;
+  --shadow: 0 24px 80px rgba(54, 49, 34, 0.12);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(232, 140, 85, 0.16), transparent 30%),
+    radial-gradient(circle at top right, rgba(95, 111, 82, 0.18), transparent 26%),
+    linear-gradient(180deg, #f6f0e6 0%, #efe7db 100%);
+  font-family: var(--font-body), sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(232, 140, 85, 0.25);
+}
+
+.app-shell {
+  width: min(1200px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.glass-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.grid-bg {
+  position: relative;
+}
+
+.grid-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(95, 111, 82, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(95, 111, 82, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent);
+}
+
+.field-input {
+  width: 100%;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.86);
+  padding: 14px 16px;
+  outline: none;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.field-input:focus {
+  border-color: var(--olive);
 }
