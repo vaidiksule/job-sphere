@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { AdminUnauthorizedError, requireAdminSessionApi, unauthorizedResponse } from "@/lib/admin-auth";
-import { getAdminUsersList } from "@/lib/db-admin";
-
-export const runtime = "nodejs";
+import { getAdminChartsData } from "@/lib/db-admin";
 
 export async function GET() {
   try {
     await requireAdminSessionApi();
-    const users = await getAdminUsersList();
-    return NextResponse.json({ users });
+    const charts = await getAdminChartsData();
+    return NextResponse.json({ charts });
   } catch (error) {
     if (error instanceof AdminUnauthorizedError) return unauthorizedResponse();
-    return NextResponse.json({ error: "Failed to load users" }, { status: 500 });
+    console.error("Admin charts failed:", error);
+    return NextResponse.json({ error: "Failed to load charts" }, { status: 500 });
   }
 }

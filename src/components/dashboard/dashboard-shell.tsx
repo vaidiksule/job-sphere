@@ -1353,6 +1353,12 @@ async function readJsonSafely(response: Response) {
   try {
     return JSON.parse(text);
   } catch {
-    return { error: text };
+    if (text.includes("<!DOCTYPE html") || text.includes("__next_error__")) {
+      return {
+        error:
+          "The server returned an error page instead of a response. Check Vercel logs — often a missing GEMINI_API_KEY, resume_url column, or DATABASE_URL issue.",
+      };
+    }
+    return { error: "Unexpected server response. Please try again." };
   }
 }

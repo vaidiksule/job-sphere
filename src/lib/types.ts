@@ -194,6 +194,14 @@ export type AdminDashboardData = {
   activity: AdminActivityItem[];
 };
 
+/** Fast first paint for /admin — charts and tab lists load on demand. */
+export type AdminInitialData = {
+  overview: AdminOverview;
+  insights: AdminInsights;
+  charts?: AdminCharts;
+  activity: AdminActivityItem[];
+};
+
 export type AdminSession = {
   adminId: string;
   username: string;

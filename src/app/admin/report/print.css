@@ -1,6 +1,41 @@
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
   .no-print {
     display: none !important;
+  }
+
+  .grid-bg::before {
+    display: none !important;
+  }
+
+  .grid-bg {
+    background: #fff !important;
+  }
+
+  .app-shell {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .glass-card {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    background: #fff !important;
+    border: 1px solid #e5e0d6 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .page-break {
@@ -8,12 +43,50 @@
     page-break-before: always;
   }
 
-  body {
-    background: white !important;
+  /* One chart per row — avoids split/clipped Recharts in 2-column print layout */
+  .charts-grid {
+    display: block !important;
   }
 
-  .glass-card {
-    box-shadow: none !important;
-    backdrop-filter: none !important;
+  .charts-grid > * {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 14px;
+  }
+
+  .chart-print-host {
+    width: 100% !important;
+    height: 240px !important;
+    min-height: 240px !important;
+    overflow: visible !important;
+  }
+
+  .chart-print-host--tall {
+    height: 280px !important;
+    min-height: 280px !important;
+  }
+
+  .recharts-responsive-container,
+  .recharts-wrapper,
+  .recharts-surface {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .recharts-responsive-container {
+    height: 100% !important;
+  }
+
+  svg.recharts-surface {
+    overflow: visible !important;
+  }
+
+  table {
+    break-inside: auto;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

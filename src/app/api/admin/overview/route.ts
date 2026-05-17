@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { AdminUnauthorizedError, requireAdminSessionApi, unauthorizedResponse } from "@/lib/admin-auth";
-import { getAdminDashboardData } from "@/lib/db-admin";
+import { getAdminOverviewData } from "@/lib/db-admin";
 
 export async function GET() {
   try {
     await requireAdminSessionApi();
-    const data = await getAdminDashboardData();
+    const data = await getAdminOverviewData();
     return NextResponse.json({
       overview: data.overview,
+      insights: data.insights,
       charts: data.charts,
       activity: data.activity,
     });

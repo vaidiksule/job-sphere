@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Activity,
   Briefcase,
@@ -15,7 +14,13 @@ import { AdminApplicationDetail } from "@/components/admin/admin-application-det
 import { AdminChartsPanel } from "@/components/admin/admin-charts";
 import { AdminInsightsRow } from "@/components/admin/admin-insights-row";
 import { AdminJobDetail } from "@/components/admin/admin-job-detail";
-import type { AdminDashboardData } from "@/lib/types";
+import type {
+  AdminApplicationListRow,
+  AdminCharts,
+  AdminInitialData,
+  AdminJobRow,
+  AdminUserRow,
+} from "@/lib/types";
 
 const tabs = [
   { id: "overview", label: "Overview", icon: ChartColumnBig },
@@ -27,37 +32,125 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 
-export function AdminShell({ data, username }: { data: AdminDashboardData; username: string }) {
-  const router = useRouter();
+export function AdminShell({ initial, username }: { initial: AdminInitialData; username: string }) {
   const [tab, setTab] = useState<TabId>("overview");
   const [userQuery, setUserQuery] = useState("");
   const [candidateQuery, setCandidateQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+  const [selectedApplication, setSelectedApplication] = useState<AdminApplicationListRow | null>(null);
+  const [loadingApplication, setLoadingApplication] = useState(false);
+  const [users, setUsers] = useState<AdminUserRow[] | null>(null);
+  const [jobs, setJobs] = useState<AdminJobRow[] | null>(null);
+  const [applications, setApplications] = useState<AdminApplicationListRow[] | null>(null);
+  const [tabLoading, setTabLoading] = useState<TabId | null>(null);
+  const [charts, setCharts] = useState<AdminCharts | null>(initial.charts ?? null);
+  const [chartsLoading, setChartsLoading] = useState(!initial.charts);
 
-  const selectedJob = data.jobs.find((job) => job.id === selectedJobId) ?? null;
-  const selectedApplication =
-    data.applications.find((application) => application.id === selectedApplicationId) ?? null;
+  const selectedJob = jobs?.find((job) => job.id === selectedJobId) ?? null;
+
+  useEffect(() => {
+    if (charts) return;
+
+    void fetch("/api/admin/charts")
+      .then(async (response) => {
+        const payload = await response.json();
+        if (response.ok) setCharts(payload.charts as AdminCharts);
+      })
+      .finally(() => setChartsLoading(false));
+  }, [charts]);
+
+  useEffect(() => {
+    if (!selectedApplicationId) {
+      setSelectedApplication(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingApplication(true);
+
+    void fetch(`/api/admin/applications/${selectedApplicationId}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) {
+          setSelectedApplication(null);
+          return;
+        }
+        setSelectedApplication(payload.application as AdminApplicationListRow);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedApplication(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingApplication(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedApplicationId]);
   const selectedJobApplications = useMemo(
-    () => (selectedJobId ? data.applications.filter((application) => application.jobId === selectedJobId) : []),
-    [data.applications, selectedJobId],
+    () =>
+      selectedJobId && applications
+        ? applications.filter((application) => application.jobId === selectedJobId)
+        : [],
+    [applications, selectedJobId],
   );
+
+  useEffect(() => {
+    if (tab === "users" && users === null) {
+      setTabLoading("users");
+      void fetch("/api/admin/users")
+        .then(async (response) => {
+          const payload = await response.json();
+          if (response.ok) setUsers(payload.users as AdminUserRow[]);
+        })
+        .finally(() => setTabLoading(null));
+    }
+  }, [tab, users]);
+
+  useEffect(() => {
+    if (tab === "jobs" && jobs === null) {
+      setTabLoading("jobs");
+      void fetch("/api/admin/jobs")
+        .then(async (response) => {
+          const payload = await response.json();
+          if (response.ok) setJobs(payload.jobs as AdminJobRow[]);
+        })
+        .finally(() => setTabLoading(null));
+    }
+  }, [tab, jobs]);
+
+  useEffect(() => {
+    if ((tab === "candidates" || selectedJobId) && applications === null) {
+      setTabLoading(tab === "candidates" ? "candidates" : "jobs");
+      void fetch("/api/admin/applications")
+        .then(async (response) => {
+          const payload = await response.json();
+          if (response.ok) setApplications(payload.applications as AdminApplicationListRow[]);
+        })
+        .finally(() => setTabLoading(null));
+    }
+  }, [tab, applications, selectedJobId]);
 
   const filteredUsers = useMemo(() => {
     const query = userQuery.trim().toLowerCase();
-    if (!query) return data.users;
-    return data.users.filter(
+    if (!users) return [];
+    if (!query) return users;
+    return users.filter(
       (user) =>
         user.name.toLowerCase().includes(query) ||
         user.email.toLowerCase().includes(query) ||
         (user.role ?? "").toLowerCase().includes(query),
     );
-  }, [data.users, userQuery]);
+  }, [users, userQuery]);
 
   const filteredApplications = useMemo(() => {
     const query = candidateQuery.trim().toLowerCase();
-    return data.applications.filter((application) => {
+    if (!applications) return [];
+    return applications.filter((application) => {
       if (statusFilter !== "all" && application.applicationStatus !== statusFilter) return false;
       if (!query) return true;
       return (
@@ -67,12 +160,11 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
         application.companyName.toLowerCase().includes(query)
       );
     });
-  }, [data.applications, candidateQuery, statusFilter]);
+  }, [applications, candidateQuery, statusFilter]);
 
   async function logout() {
     await fetch("/api/admin/auth/logout", { method: "POST" });
-    router.push("/admin/login");
-    router.refresh();
+    window.location.assign("/admin/login");
   }
 
   return (
@@ -126,10 +218,17 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
           </aside>
 
           <section className="space-y-5">
+            {selectedApplicationId && loadingApplication ? (
+              <div className="glass-card rounded-[28px] p-6 text-sm text-[var(--muted)]">Loading application details…</div>
+            ) : null}
+
             {selectedApplication ? (
               <AdminApplicationDetail
                 application={selectedApplication}
-                onClose={() => setSelectedApplicationId(null)}
+                onClose={() => {
+                  setSelectedApplicationId(null);
+                  setSelectedApplication(null);
+                }}
               />
             ) : null}
 
@@ -148,14 +247,14 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
             {tab === "overview" ? (
               <>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <MetricCard label="Total users" value={data.overview.totalUsers} />
-                  <MetricCard label="Recruiters" value={data.overview.recruiters} />
-                  <MetricCard label="Applicants" value={data.overview.applicants} />
-                  <MetricCard label="Applications" value={data.overview.totalApplications} />
-                  <MetricCard label="Open jobs" value={data.overview.openJobs} />
-                  <MetricCard label="Total jobs" value={data.overview.totalJobs} />
-                  <MetricCard label="Avg fit" value={`${data.overview.avgFitScore}%`} />
-                  <MetricCard label="Pending analysis" value={data.overview.pendingAnalyses} />
+                  <MetricCard label="Total users" value={initial.overview.totalUsers} />
+                  <MetricCard label="Recruiters" value={initial.overview.recruiters} />
+                  <MetricCard label="Applicants" value={initial.overview.applicants} />
+                  <MetricCard label="Applications" value={initial.overview.totalApplications} />
+                  <MetricCard label="Open jobs" value={initial.overview.openJobs} />
+                  <MetricCard label="Total jobs" value={initial.overview.totalJobs} />
+                  <MetricCard label="Avg fit" value={`${initial.overview.avgFitScore}%`} />
+                  <MetricCard label="Pending analysis" value={initial.overview.pendingAnalyses} />
                 </div>
 
                 <div className="glass-card rounded-[28px] p-6">
@@ -164,24 +263,33 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
                     Processed means analysis completed. Open a job or candidate from the Jobs / Candidates tabs for details.
                   </p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <MetricCard label="Processed" value={data.overview.processedApplications} />
-                    <MetricCard label="Under review" value={data.overview.underReview} />
-                    <MetricCard label="Shortlisted" value={data.overview.shortlisted} />
-                    <MetricCard label="Hired" value={data.overview.hired} />
-                    <MetricCard label="Submitted" value={data.overview.submitted} />
-                    <MetricCard label="Interview" value={data.overview.interview} />
-                    <MetricCard label="Rejected" value={data.overview.rejected} />
+                    <MetricCard label="Processed" value={initial.overview.processedApplications} />
+                    <MetricCard label="Under review" value={initial.overview.underReview} />
+                    <MetricCard label="Shortlisted" value={initial.overview.shortlisted} />
+                    <MetricCard label="Hired" value={initial.overview.hired} />
+                    <MetricCard label="Submitted" value={initial.overview.submitted} />
+                    <MetricCard label="Interview" value={initial.overview.interview} />
+                    <MetricCard label="Rejected" value={initial.overview.rejected} />
                   </div>
                 </div>
 
-                <AdminInsightsRow insights={data.insights} />
+                <AdminInsightsRow insights={initial.insights} />
 
-                <AdminChartsPanel charts={data.charts} />
+                {chartsLoading ? (
+                  <p className="text-sm text-[var(--muted)]">Loading charts…</p>
+                ) : charts ? (
+                  <AdminChartsPanel charts={charts} />
+                ) : (
+                  <p className="text-sm text-[var(--muted)]">Charts could not be loaded.</p>
+                )}
               </>
             ) : null}
 
             {tab === "users" ? (
               <DataPanel title="All users" subtitle="Who is on the platform and what they are doing">
+                {tabLoading === "users" ? (
+                  <p className="mb-4 text-sm text-[var(--muted)]">Loading users…</p>
+                ) : null}
                 <input
                   value={userQuery}
                   onChange={(event) => setUserQuery(event.target.value)}
@@ -219,6 +327,9 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
 
             {tab === "jobs" ? (
               <DataPanel title="All job postings" subtitle="Roles on the platform and resume volume per job">
+                {tabLoading === "jobs" ? (
+                  <p className="mb-4 text-sm text-[var(--muted)]">Loading jobs…</p>
+                ) : null}
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead>
@@ -233,7 +344,7 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
                       </tr>
                     </thead>
                     <tbody>
-                      {data.jobs.map((job) => (
+                      {(jobs ?? []).map((job) => (
                         <tr key={job.id} className="border-b border-[var(--line)]/60">
                           <td className="py-3 pr-4 font-medium">{job.jobTitle}</td>
                           <td className="py-3 pr-4">{job.companyName}</td>
@@ -263,6 +374,9 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
 
             {tab === "candidates" ? (
               <DataPanel title="All candidates" subtitle="Applications and fit scores across every role">
+                {tabLoading === "candidates" ? (
+                  <p className="mb-4 text-sm text-[var(--muted)]">Loading candidates…</p>
+                ) : null}
                 <div className="mb-4 flex flex-wrap gap-3">
                   <input
                     value={candidateQuery}
@@ -335,8 +449,8 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
             {tab === "activity" ? (
               <DataPanel title="Recent activity" subtitle="Signups and applications across the platform">
                 <div className="space-y-3">
-                  {data.activity.length ? (
-                    data.activity.map((item) => (
+                  {initial.activity.length ? (
+                    initial.activity.map((item) => (
                       <div key={item.id} className="rounded-[20px] border border-[var(--line)] bg-white/70 px-4 py-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>

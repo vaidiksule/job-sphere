@@ -1,10 +1,12 @@
 import { AdminShell } from "@/components/admin/admin-shell";
 import { requireAdminSession } from "@/lib/admin-auth";
-import { getAdminDashboardData } from "@/lib/db-admin";
+import { getAdminOverviewData } from "@/lib/db-admin";
+
+export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const session = await requireAdminSession();
-  const data = await getAdminDashboardData();
+  const initial = await getAdminOverviewData();
 
-  return <AdminShell data={data} username={session.username} />;
+  return <AdminShell initial={initial} username={session.username} />;
 }

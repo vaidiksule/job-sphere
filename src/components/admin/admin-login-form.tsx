@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export function AdminLoginForm() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -28,8 +26,9 @@ export function AdminLoginForm() {
         return;
       }
 
-      router.push("/admin");
-      router.refresh();
+      // Full navigation avoids "Router action dispatched before initialization"
+      // and ensures the new session cookie is sent on the next request.
+      window.location.assign("/admin");
     } catch {
       setError("Unable to sign in. Try again.");
     } finally {

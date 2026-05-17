@@ -8,10 +8,18 @@ if (!connectionString) {
   console.warn("DATABASE_URL is not set. Database-backed features will fail until it is configured.");
 }
 
+function isLocalDatabase(url: string) {
+  return url.includes("localhost") || url.includes("127.0.0.1");
+}
+
 function getPostgresOptions(url: string) {
-  const isLocal = url.includes("localhost") || url.includes("127.0.0.1");
-  if (isLocal) return { max: 1 };
-  return { ssl: "require" as const, max: 1 };
+  if (isLocalDatabase(url)) return { max: 1 };
+  // Allow a few concurrent queries per serverless instance (overview + charts).
+  return { ssl: "require" as const, max: 4 };
+}
+
+export function usesRemoteManagedDatabase() {
+  return Boolean(connectionString && !isLocalDatabase(connectionString));
 }
 
 export const sql = postgres(
@@ -21,11 +29,24 @@ export const sql = postgres(
 
 let initialized = false;
 
+async function ensureDatabaseLightweight() {
+  await sql`ALTER TABLE applications ADD COLUMN IF NOT EXISTS resume_url TEXT`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS admin_accounts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
 export async function ensureDatabase() {
   if (initialized || !connectionString) return;
 
-  // On Vercel, schema is already provisioned — skip ~15 sequential DDL round-trips per cold start.
-  if (process.env.VERCEL) {
+  // Remote Supabase / Vercel: skip 15+ DDL round-trips; schema is managed in the dashboard.
+  if (process.env.VERCEL || usesRemoteManagedDatabase()) {
+    await ensureDatabaseLightweight();
     initialized = true;
     return;
   }
@@ -94,6 +115,7 @@ export async function ensureDatabase() {
   await sql`ALTER TABLE applications ADD COLUMN IF NOT EXISTS application_status TEXT NOT NULL DEFAULT 'submitted'`;
   await sql`ALTER TABLE applications ADD COLUMN IF NOT EXISTS match_breakdown JSONB`;
   await sql`ALTER TABLE applications ADD COLUMN IF NOT EXISTS application_insights JSONB`;
+  await sql`ALTER TABLE applications ADD COLUMN IF NOT EXISTS resume_url TEXT`;
   await sql`ALTER TABLE applications ALTER COLUMN fit_score DROP NOT NULL`;
   await sql`ALTER TABLE applications ALTER COLUMN fit_summary DROP NOT NULL`;
   try {

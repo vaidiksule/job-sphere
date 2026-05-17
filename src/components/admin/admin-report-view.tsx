@@ -7,7 +7,7 @@ import type { AdminDashboardData } from "@/lib/types";
 
 export function AdminReportView({ data, generatedAt }: { data: AdminDashboardData; generatedAt: string }) {
   return (
-    <div className="grid-bg min-h-screen px-4 py-6 sm:px-6 print:bg-white print:px-0">
+    <div id="admin-report-print" className="admin-report grid-bg min-h-screen px-4 py-6 sm:px-6 print:bg-white print:px-0">
       <div className="app-shell space-y-6">
         <div className="no-print flex flex-wrap items-center justify-between gap-3">
           <Link href="/admin" className="text-sm font-semibold text-[var(--olive)] hover:underline">
@@ -63,7 +63,7 @@ export function AdminReportView({ data, generatedAt }: { data: AdminDashboardDat
           </div>
         </section>
 
-        <section className="page-break glass-card rounded-[28px] p-6 print:break-inside-avoid">
+        <section className="page-break glass-card rounded-[28px] p-6">
           <h2 className="text-2xl font-semibold">Analytics</h2>
           <div className="mt-4">
             <AdminChartsPanel charts={data.charts} />
@@ -92,7 +92,7 @@ export function AdminReportView({ data, generatedAt }: { data: AdminDashboardDat
           </table>
         </section>
 
-        <section className="page-break glass-card rounded-[28px] p-6">
+        <section className="no-print page-break glass-card rounded-[28px] p-6">
           <h2 className="text-2xl font-semibold">User appendix</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">First 50 users on the platform</p>
           <table className="mt-4 min-w-full text-left text-sm">
