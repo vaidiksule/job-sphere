@@ -1,9 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ApplicationInsights, MatchBreakdown, ScoreBand } from "@/lib/types";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.1-flash-lite-preview";
 
-export async function extractResumeTextFromImage(input: {
+export async function extractRawTextWithGemini(input: {
   bytesBase64: string;
   mimeType: string;
   fileName?: string;
@@ -11,17 +11,17 @@ export async function extractResumeTextFromImage(input: {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is required for image resume uploads.");
+    throw new Error("GEMINI_API_KEY is required for image and PDF resume uploads.");
   }
 
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({ model: GEMINI_MODEL });
 
-  const prompt = `Extract all resume text from this image and return plain text only.
+  const prompt = `Extract all resume text from this document and return plain text only.
 Do not summarize.
 Do not add markdown.
 Preserve important fields like name, email, phone, skills, education, projects, and experience.
-Filename: ${input.fileName ?? "resume-image"}`;
+Filename: ${input.fileName ?? "resume"}`;
 
   const result = await model.generateContent({
     contents: [
@@ -86,7 +86,8 @@ Resume text: ${input.resumeText}`;
     const result = await model.generateContent(prompt);
     const text = result.response.text().replace(/```json|```/g, "").trim();
     return JSON.parse(text);
-  } catch {
+  } catch (err) {
+    console.error("Gemini API Error in structureResumeWithGemini:", err);
     return heuristicResumeStructure(input.resumeText);
   }
 }
@@ -171,7 +172,8 @@ Resume: ${input.resumeText}`;
       matchBreakdown: normalizeBreakdown(parsed.matchBreakdown, parsed.strengths, parsed.gaps),
       applicationInsights: normalizeInsights(parsed.applicationInsights, parsed, parsed.strengths, parsed.gaps, clampScore(parsed.fitScore)),
     };
-  } catch {
+  } catch (err) {
+    console.error("Gemini API Error in analyzeResumeFit:", err);
     return heuristicMatch(input);
   }
 }
@@ -261,7 +263,8 @@ Structured resume JSON: ${JSON.stringify(input.structuredResume)}`;
       matchBreakdown: normalizeBreakdown(parsed.matchBreakdown, parsed.strengths, parsed.gaps),
       applicationInsights: normalizeInsights(parsed.applicationInsights, parsed, parsed.strengths, parsed.gaps, clampScore(parsed.fitScore)),
     };
-  } catch {
+  } catch (err) {
+    console.error("Gemini API Error in analyzeStructuredResumeFit:", err);
     return heuristicMatch({
       description: input.description,
       requirements: input.requirements,

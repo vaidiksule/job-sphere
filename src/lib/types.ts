@@ -64,6 +64,7 @@ export type ApplicationRow = {
   job_id: string;
   applicant_id: string;
   resume_file_name: string;
+  resume_url?: string | null;
   resume_text: string;
   application_status: ApplicationStatus;
   fit_score: number | null;
@@ -79,6 +80,89 @@ export type ApplicationRow = {
   applicant_email: string;
   job_title?: string;
   company_name?: string;
+};
+
+export type AdminOverview = {
+  totalUsers: number;
+  recruiters: number;
+  applicants: number;
+  totalJobs: number;
+  openJobs: number;
+  totalApplications: number;
+  avgFitScore: number;
+  pendingAnalyses: number;
+};
+
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole | null;
+  companyName: string | null;
+  headline: string | null;
+  createdAt: string;
+  jobsPosted: number;
+  applicationsSubmitted: number;
+  lastActiveAt: string | null;
+};
+
+export type AdminJobRow = {
+  id: string;
+  jobTitle: string;
+  companyName: string;
+  location: string;
+  status: string;
+  recruiterName: string;
+  recruiterEmail: string;
+  applicationCount: number;
+  avgFitScore: number;
+  createdAt: string;
+};
+
+export type AdminApplicationListRow = {
+  id: string;
+  jobId: string;
+  applicantId: string;
+  applicantName: string;
+  applicantEmail: string;
+  jobTitle: string;
+  companyName: string;
+  applicationStatus: ApplicationStatus;
+  analysisStatus: string;
+  fitScore: number | null;
+  appliedAt: string;
+  resumeFileName: string;
+};
+
+export type AdminCharts = {
+  usersByRole: Array<{ role: string; count: number }>;
+  signupsByWeek: Array<{ week: string; count: number }>;
+  applicationsByWeek: Array<{ week: string; count: number }>;
+  statusBreakdown: Array<{ status: ApplicationStatus; count: number }>;
+  scoreBands: Array<{ band: ScoreBand; count: number }>;
+  topJobsByApplicants: Array<{ jobTitle: string; companyName: string; count: number }>;
+};
+
+export type AdminActivityItem = {
+  id: string;
+  type: "signup" | "application";
+  title: string;
+  subtitle: string;
+  at: string;
+};
+
+export type AdminDashboardData = {
+  overview: AdminOverview;
+  charts: AdminCharts;
+  users: AdminUserRow[];
+  jobs: AdminJobRow[];
+  applications: AdminApplicationListRow[];
+  activity: AdminActivityItem[];
+};
+
+export type AdminSession = {
+  adminId: string;
+  username: string;
 };
 
 export type DashboardData = {

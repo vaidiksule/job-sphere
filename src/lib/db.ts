@@ -1,4 +1,5 @@
-import { neon } from "@neondatabase/serverless";
+// import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import type { ApplicationInsights, ApplicationRow, ApplicationStatus, DashboardData, MatchBreakdown, UserRole } from "@/lib/types";
 
 const connectionString = process.env.DATABASE_URL;
@@ -7,7 +8,7 @@ if (!connectionString) {
   console.warn("DATABASE_URL is not set. Database-backed features will fail until it is configured.");
 }
 
-export const sql = neon(connectionString ?? "postgres://placeholder:placeholder@localhost/placeholder");
+export const sql = postgres(connectionString ?? "postgres://placeholder:placeholder@localhost/placeholder");
 
 let initialized = false;
 
@@ -80,12 +81,16 @@ export async function ensureDatabase() {
   await sql`ALTER TABLE applications ADD COLUMN IF NOT EXISTS application_insights JSONB`;
   await sql`ALTER TABLE applications ALTER COLUMN fit_score DROP NOT NULL`;
   await sql`ALTER TABLE applications ALTER COLUMN fit_summary DROP NOT NULL`;
-  await sql`ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_application_status_check`;
-  await sql`
-    ALTER TABLE applications
-    ADD CONSTRAINT applications_application_status_check
-    CHECK (application_status IN ('submitted', 'under_review', 'shortlisted', 'interview', 'rejected', 'hired'))
-  `;
+  try {
+    await sql`ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_application_status_check`;
+    await sql`
+      ALTER TABLE applications
+      ADD CONSTRAINT applications_application_status_check
+      CHECK (application_status IN ('submitted', 'under_review', 'shortlisted', 'interview', 'rejected', 'hired'))
+    `;
+  } catch (e) {
+    // Ignore concurrent race conditions where constraint might already exist
+  }
   await sql`UPDATE applications SET analysis_status = 'completed' WHERE analysis_status IS NULL AND fit_score IS NOT NULL`;
   await sql`UPDATE applications SET analysis_status = 'pending' WHERE analysis_status IS NULL`;
   await sql`UPDATE applications SET application_status = 'submitted' WHERE application_status IS NULL`;
@@ -93,6 +98,15 @@ export async function ensureDatabase() {
   await sql`CREATE INDEX IF NOT EXISTS jobs_recruiter_idx ON jobs(recruiter_id, created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS applications_job_idx ON applications(job_id, applied_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS applications_applicant_idx ON applications(applicant_id, applied_at DESC)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS admin_accounts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
 
   initialized = true;
 }
@@ -205,18 +219,20 @@ export async function createApplication(input: {
   jobId: string;
   applicantId: string;
   resumeFileName: string;
+  resumeUrl?: string | null;
   resumeText: string;
   structuredResume?: Record<string, unknown> | null;
 }) {
   await ensureDatabase();
   const rows = await sql`
     INSERT INTO applications (
-      job_id, applicant_id, resume_file_name, resume_text, structured_resume, analysis_status, application_status, fit_score, fit_summary, strengths, gaps, match_breakdown, application_insights
+      job_id, applicant_id, resume_file_name, resume_url, resume_text, structured_resume, analysis_status, application_status, fit_score, fit_summary, strengths, gaps, match_breakdown, application_insights
     )
     VALUES (
       ${input.jobId},
       ${input.applicantId},
       ${input.resumeFileName},
+      ${input.resumeUrl ?? null},
       ${input.resumeText},
       ${input.structuredResume ? JSON.stringify(input.structuredResume) : null}::jsonb,
       'pending',
@@ -231,6 +247,7 @@ export async function createApplication(input: {
     ON CONFLICT (job_id, applicant_id)
     DO UPDATE SET
       resume_file_name = EXCLUDED.resume_file_name,
+      resume_url = COALESCE(EXCLUDED.resume_url, applications.resume_url),
       resume_text = EXCLUDED.resume_text,
       structured_resume = EXCLUDED.structured_resume,
       analysis_status = 'pending',
@@ -346,6 +363,7 @@ export async function getDashboardData(email: string): Promise<DashboardData | n
             a.job_id,
             a.applicant_id,
             a.resume_file_name,
+            a.resume_url,
             a.resume_text,
             a.application_status,
             a.fit_score,
@@ -375,6 +393,7 @@ export async function getDashboardData(email: string): Promise<DashboardData | n
             a.job_id,
             a.applicant_id,
             a.resume_file_name,
+            a.resume_url,
             a.resume_text,
             a.application_status,
             a.fit_score,
@@ -417,8 +436,8 @@ export async function getDashboardData(email: string): Promise<DashboardData | n
       companyName: user.company_name,
       headline: user.headline,
     },
-    jobs: jobs as DashboardData["jobs"],
-    recruiterJobs: recruiterJobs as DashboardData["recruiterJobs"],
+    jobs: jobs as unknown as DashboardData["jobs"],
+    recruiterJobs: recruiterJobs as unknown as DashboardData["recruiterJobs"],
     recruiterApplications: recruiterApplications.map(normalizeApplication),
     applicantApplications: applicantApplications.map(normalizeApplication),
     metrics: {
@@ -432,7 +451,7 @@ export async function getDashboardData(email: string): Promise<DashboardData | n
   };
 }
 
-function normalizeApplication(row: Record<string, unknown>): ApplicationRow {
+export function normalizeApplication(row: Record<string, unknown>): ApplicationRow {
   return {
     ...row,
     application_status: parseApplicationStatus(row.application_status),

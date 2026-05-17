@@ -5,6 +5,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   ChartColumnBig,
+  ChevronDown,
   CircleDot,
   FileSpreadsheet,
   LogOut,
@@ -30,7 +31,7 @@ import { cn, formatSalaryRange } from "@/lib/utils";
 
 const recruiterTabs = [
   { id: "overview", label: "Overview", icon: ChartColumnBig },
-  { id: "post", label: "Post job", icon: BriefcaseBusiness },
+  { id: "post", label: "Jobs", icon: BriefcaseBusiness },
   { id: "pipeline", label: "Applications", icon: Users },
 ] as const;
 
@@ -70,8 +71,11 @@ export function DashboardShell({ data }: { data: DashboardData }) {
   const [status, setStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [applyJobId, setApplyJobId] = useState<string | null>(null);
+  const [viewJobId, setViewJobId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [showPostForm, setShowPostForm] = useState(false);
+  const [pipelineFilter, setPipelineFilter] = useState("all");
   const [updatingApplicationId, setUpdatingApplicationId] = useState<string | null>(null);
   const [jobForm, setJobForm] = useState<JobFormState>({
     companyName: data.user.companyName ?? "",
@@ -88,6 +92,7 @@ export function DashboardShell({ data }: { data: DashboardData }) {
   });
 
   const activeJob = useMemo(() => data.jobs.find((job) => job.id === applyJobId) ?? null, [applyJobId, data.jobs]);
+  const viewingJob = useMemo(() => data.recruiterJobs.find((job) => job.id === viewJobId) ?? null, [viewJobId, data.recruiterJobs]);
   const pendingAnalyses = data.recruiterApplications.filter((application) => application.analysis_status !== "completed").length;
 
   useEffect(() => {
@@ -157,7 +162,7 @@ export function DashboardShell({ data }: { data: DashboardData }) {
       salaryMax: "",
     }));
     router.refresh();
-    setTab("overview");
+    setShowPostForm(false);
   }
 
   async function submitApplication(event: React.FormEvent<HTMLFormElement>) {
@@ -255,7 +260,7 @@ export function DashboardShell({ data }: { data: DashboardData }) {
           </div>
         </header>
 
-        <div className="grid gap-5 lg:grid-cols-[250px_1fr]">
+        <div className="grid gap-5 items-start lg:grid-cols-[250px_1fr]">
           <aside className="glass-card rounded-[28px] p-4">
             <div className="space-y-2">
               {(isRecruiter ? recruiterTabs : applicantTabs).map((item) => {
@@ -298,11 +303,39 @@ export function DashboardShell({ data }: { data: DashboardData }) {
           <section className="space-y-5">
             {status ? <div className="rounded-[22px] border border-[var(--line)] bg-white/70 px-5 py-4 text-sm text-[var(--ink)]">{status}</div> : null}
             {isRecruiter && tab === "overview" ? <RecruiterOverview data={data} /> : null}
-            {isRecruiter && tab === "post" ? <RecruiterPostForm form={jobForm} setForm={setJobForm} onSubmit={submitJob} submitting={submitting} /> : null}
-            {isRecruiter && tab === "pipeline" ? (
-              <RecruiterPipeline data={data} updatingApplicationId={updatingApplicationId} onUpdateStatus={updateCandidateStatus} />
+            {isRecruiter && tab === "post" && !showPostForm ? (
+              <RecruiterJobsList
+                jobs={data.recruiterJobs}
+                onNewJob={() => setShowPostForm(true)}
+                onJobSelect={(id) => {
+                  setPipelineFilter(id);
+                  setTab("pipeline");
+                }}
+                onViewDetails={(id) => setViewJobId(id)}
+              />
             ) : null}
-            {!isRecruiter && tab === "discover" ? <ApplicantDiscover jobs={data.jobs} onApply={setApplyJobId} /> : null}
+            {isRecruiter && tab === "post" && showPostForm ? (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setShowPostForm(false)}
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--muted)] transition hover:text-[var(--ink)]"
+                >
+                  &larr; Back to jobs
+                </button>
+                <RecruiterPostForm form={jobForm} setForm={setJobForm} onSubmit={submitJob} submitting={submitting} />
+              </div>
+            ) : null}
+            {isRecruiter && tab === "pipeline" ? (
+              <RecruiterPipeline 
+                data={data} 
+                updatingApplicationId={updatingApplicationId} 
+                onUpdateStatus={updateCandidateStatus} 
+                filter={pipelineFilter} 
+                setFilter={setPipelineFilter} 
+              />
+            ) : null}
+            {!isRecruiter && tab === "discover" ? <ApplicantDiscover jobs={data.jobs} appliedJobIds={data.applicantApplications.map(a => a.job_id)} onApply={setApplyJobId} /> : null}
             {!isRecruiter && tab === "applied" ? <ApplicantApplications data={data} /> : null}
           </section>
         </div>
@@ -340,6 +373,101 @@ export function DashboardShell({ data }: { data: DashboardData }) {
           </div>
         </div>
       ) : null}
+
+      {viewingJob ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(32,24,17,0.45)] p-4 overflow-y-auto">
+          <div className="w-full max-w-3xl rounded-[32px] border border-[var(--line)] bg-[var(--paper)] p-6 shadow-2xl sm:p-8 my-8 relative">
+            <div className="sticky top-0 right-0 flex justify-end">
+               <button type="button" className="rounded-full bg-white/80 border border-[var(--line)] px-4 py-2 hover:bg-white" onClick={() => setViewJobId(null)}>Close x</button>
+            </div>
+            
+            <div className="mb-6">
+              <div className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--olive)]">Job details</div>
+              <h2 className="mt-2 font-[var(--font-heading)] text-3xl font-semibold">{viewingJob.job_title}</h2>
+              <div className="mt-2 flex flex-wrap gap-2 text-sm text-[var(--muted)]">
+                <span className="rounded bg-black/5 px-2 py-1">{viewingJob.employment_type}</span>
+                <span className="rounded bg-black/5 px-2 py-1">{viewingJob.workplace_type}</span>
+                <span className="rounded bg-black/5 px-2 py-1">{viewingJob.location}</span>
+                <span className="rounded bg-black/5 px-2 py-1">{formatSalaryRange(viewingJob.salary_min, viewingJob.salary_max, viewingJob.salary_currency)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-6 text-sm text-[var(--ink)]">
+              <div>
+                <h3 className="font-semibold text-lg mb-2">Job Description</h3>
+                <p className="whitespace-pre-wrap leading-relaxed">{viewingJob.description}</p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg mb-2">Requirements</h3>
+                <p className="whitespace-pre-wrap leading-relaxed">{viewingJob.requirements}</p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg mb-2">Responsibilities</h3>
+                <p className="whitespace-pre-wrap leading-relaxed">{viewingJob.responsibilities}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RecruiterJobsList({ jobs, onNewJob, onJobSelect, onViewDetails }: { jobs: DashboardData['recruiterJobs']; onNewJob: () => void; onJobSelect: (id: string) => void; onViewDetails: (id: string) => void }) {
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 glass-card rounded-[24px] p-6">
+        <div>
+          <h2 className="text-2xl font-semibold">Your posted jobs</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">Manage your active roles and create new ones.</p>
+        </div>
+        <button type="button" onClick={onNewJob} className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-white/70 px-4 py-2 text-sm font-semibold transition hover:bg-white">
+          <BriefcaseBusiness size={16} />
+          <span>Post new job</span>
+        </button>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {jobs.length ? jobs.map((job) => (
+          <article 
+            key={job.id} 
+            className="text-left glass-card rounded-[24px] p-5 flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-lg">{job.job_title}</div>
+                  <div className="text-sm text-[var(--muted)] mt-1">{job.company_name} / {job.location}</div>
+                </div>
+                <div className="rounded-full bg-[var(--card-strong)] px-3 py-1 text-xs font-semibold uppercase tracking-wider">{job.status}</div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
+                <span className="rounded bg-white/50 px-2 py-1">{job.employment_type}</span>
+                <span className="rounded bg-white/50 px-2 py-1">{job.workplace_type}</span>
+                <span className="rounded bg-white/50 px-2 py-1">{new Date(job.created_at as string).toLocaleDateString()}</span>
+              </div>
+              <div className="mt-4 border-t border-[var(--line)] pt-4 flex justify-between items-center text-sm">
+                <span className="font-semibold text-[var(--olive)]">{job.application_count ?? 0} applications</span>
+                <span className="font-semibold">{job.avg_fit_score ?? 0}% avg fit</span>
+              </div>
+            </div>
+            
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button onClick={() => onJobSelect(job.id)} className="rounded-full bg-[var(--ink)] text-white hover:opacity-90 py-2 px-3 text-sm font-semibold transition text-center">
+                Review applicants
+              </button>
+              <button onClick={() => onViewDetails(job.id)} className="rounded-full border border-[var(--line)] bg-white/50 hover:bg-white py-2 px-3 text-sm font-semibold transition text-center">
+                Job details
+              </button>
+            </div>
+          </article>
+        )) : (
+          <div className="col-span-full rounded-[24px] border border-[var(--line)] bg-white/60 py-12 text-center">
+            <h3 className="text-lg font-semibold text-[var(--ink)]">No jobs posted yet</h3>
+            <p className="mt-2 text-sm text-[var(--muted)]">You haven't published any roles. Create one to start receiving applications.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -363,85 +491,87 @@ function RecruiterOverview({ data }: { data: DashboardData }) {
         <MetricCard label="Hired" value={statusCounts.hired} />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="glass-card rounded-[30px] p-6 sm:p-7">
-          <div className="flex items-center gap-2 text-[var(--olive)]">
-            <BarChart3 size={18} />
-            <span className="font-mono text-xs uppercase tracking-[0.3em]">Hiring intelligence</span>
-          </div>
-          <h2 className="mt-4 text-2xl font-semibold">Per-role fit analytics</h2>
-          <div className="mt-5 space-y-4">
-            {data.recruiterJobs.length ? (
-              data.recruiterJobs.map((job) => {
-                const jobApplications = data.recruiterApplications.filter((application) => application.job_id === job.id);
-                const readiness = average(jobApplications.map((application) => application.match_breakdown?.overallReadiness ?? 0));
-                const alignment = average(jobApplications.map((application) => application.match_breakdown?.roleAlignment ?? 0));
-
-                return (
-                  <div key={job.id} className="rounded-[24px] border border-[var(--line)] bg-white/72 p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <div className="text-xl font-semibold">{job.job_title}</div>
-                        <div className="mt-1 text-sm text-[var(--muted)]">
-                          {job.company_name} / {job.location} / {job.workplace_type}
-                        </div>
-                      </div>
-                      <div className="rounded-full bg-[var(--card-strong)] px-4 py-2 text-sm font-semibold">
-                        {jobApplications.length} applicants
-                      </div>
-                    </div>
-                    <div className="mt-5 grid gap-3 md:grid-cols-3">
-                      <MiniMetric label="Avg fit" value={`${job.avg_fit_score ?? 0}%`} />
-                      <MiniMetric label="Alignment" value={`${alignment}%`} />
-                      <MiniMetric label="Readiness" value={`${readiness}%`} />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <EmptyState title="No roles yet" text="Create your first role and this overview will turn into a long analytics feed." />
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-5">
+      <section className="grid gap-5 xl:grid-cols-2">
+        <div className="flex flex-col gap-5">
           <div className="glass-card rounded-[30px] p-6 sm:p-7">
             <div className="flex items-center gap-2 text-[var(--olive)]">
-              <Sparkles size={18} />
-              <span className="font-mono text-xs uppercase tracking-[0.3em]">Top candidates</span>
+              <BarChart3 size={18} />
+              <span className="font-mono text-xs uppercase tracking-[0.3em]">Hiring intelligence</span>
             </div>
+            <h2 className="mt-4 text-2xl font-semibold">Per-role fit analytics</h2>
             <div className="mt-5 space-y-4">
-              {topCandidates.length ? (
-                topCandidates.map((application) => (
-                  <div key={application.id} className="rounded-[22px] border border-[var(--line)] bg-white/72 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold">{application.applicant_name}</div>
-                        <div className="text-sm text-[var(--muted)]">{application.job_title}</div>
+              {data.recruiterJobs.length ? (
+                data.recruiterJobs.map((job) => {
+                  const jobApplications = data.recruiterApplications.filter((application) => application.job_id === job.id);
+                  const readiness = average(jobApplications.map((application) => application.match_breakdown?.overallReadiness ?? 0));
+                  const alignment = average(jobApplications.map((application) => application.match_breakdown?.roleAlignment ?? 0));
+
+                  return (
+                    <div key={job.id} className="rounded-[24px] border border-[var(--line)] bg-white/72 p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <div className="text-xl font-semibold">{job.job_title}</div>
+                          <div className="mt-1 text-sm text-[var(--muted)]">
+                            {job.company_name} / {job.location} / {job.workplace_type}
+                          </div>
+                        </div>
+                        <div className="rounded-full bg-[var(--card-strong)] px-4 py-2 text-sm font-semibold">
+                          {jobApplications.length} applicants
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={application.application_status} />
-                        <ScorePill value={application.fit_score ?? 0} />
+                      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                        <MiniMetric label="Avg fit" value={`${job.avg_fit_score ?? 0}%`} />
+                        <MiniMetric label="Alignment" value={`${alignment}%`} />
+                        <MiniMetric label="Readiness" value={`${readiness}%`} />
                       </div>
                     </div>
-                    <p className="mt-3 text-sm text-[var(--muted)]">
-                      {application.application_insights?.hiringRecommendation || application.fit_summary || "Detailed recommendation pending."}
-                    </p>
-                  </div>
-                ))
+                  );
+                })
               ) : (
-                <p className="text-sm text-[var(--muted)]">Top candidate signals appear here once analyzed applications exist.</p>
+                <EmptyState title="No roles yet" text="Create your first role and this overview will turn into a long analytics feed." />
               )}
             </div>
           </div>
 
           <div className="glass-card rounded-[30px] p-6 sm:p-7">
             <div className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--olive)]">Score distribution</div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <p className="mt-2 text-sm text-[var(--muted)]">How applicant fit scores are spread across your pipeline</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
               {scoreBandOrder.map((band) => (
                 <MiniMetric key={band} label={band} value={scoreBandCounts[band]} />
               ))}
             </div>
+          </div>
+        </div>
+
+        <div className="glass-card rounded-[30px] p-6 sm:p-7">
+          <div className="flex items-center gap-2 text-[var(--olive)]">
+            <Sparkles size={18} />
+            <span className="font-mono text-xs uppercase tracking-[0.3em]">Top candidates</span>
+          </div>
+          <p className="mt-2 text-sm text-[var(--muted)]">Highest-fit applicants across your open roles</p>
+          <div className="mt-5 space-y-4">
+            {topCandidates.length ? (
+              topCandidates.map((application) => (
+                <div key={application.id} className="rounded-[22px] border border-[var(--line)] bg-white/72 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{application.applicant_name}</div>
+                      <div className="text-sm text-[var(--muted)]">{application.job_title}</div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <StatusBadge status={application.application_status} />
+                      <ScorePill value={application.fit_score ?? 0} />
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
+                    {application.application_insights?.hiringRecommendation || application.fit_summary || "Detailed recommendation pending."}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-[var(--muted)]">Top candidate signals appear here once analyzed applications exist.</p>
+            )}
           </div>
         </div>
       </section>
@@ -508,15 +638,43 @@ function RecruiterPipeline({
   data,
   updatingApplicationId,
   onUpdateStatus,
+  filter,
+  setFilter
 }: {
   data: DashboardData;
   updatingApplicationId: string | null;
   onUpdateStatus: (applicationId: string, nextStatus: ApplicationStatus) => Promise<void>;
+  filter: string;
+  setFilter: (id: string) => void;
 }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const filteredApplications = (filter === "all" ? data.recruiterApplications : data.recruiterApplications.filter(a => a.job_id === filter))
+    .filter(a => !searchQuery.trim() || a.applicant_name.toLowerCase().includes(searchQuery.toLowerCase()) || a.applicant_email.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => (b.fit_score || 0) - (a.fit_score || 0));
+
   return (
     <div className="space-y-5">
-      {data.recruiterApplications.length ? (
-        data.recruiterApplications.map((application) => (
+      <div className="glass-card flex flex-wrap items-center gap-4 justify-between rounded-[24px] p-5">
+        <div>
+          <div className="font-semibold text-[var(--ink)]">Filter candidates</div>
+          <p className="mt-1 text-sm text-[var(--muted)]">Search by name or select a role to view specific applicants.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-initial">
+             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" size={16} />
+             <input type="text" placeholder="Search name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full sm:w-[220px] rounded-[16px] pl-10 pr-4 py-3 border border-[var(--line)] bg-white text-sm focus:outline-none" />
+          </div>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-full sm:w-auto rounded-[16px] border border-[var(--line)] bg-white px-4 py-3 text-sm focus:outline-none">
+            <option value="all">All published roles</option>
+            {data.recruiterJobs.map(job => (
+              <option key={job.id} value={job.id}>{job.job_title}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {filteredApplications.length ? (
+        filteredApplications.map((application) => (
           <CandidateDossier
             key={application.id}
             application={application}
@@ -540,13 +698,17 @@ function CandidateDossier({
   updatingApplicationId: string | null;
   onUpdateStatus: (applicationId: string, nextStatus: ApplicationStatus) => Promise<void>;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const breakdown = application.match_breakdown;
   const insights = application.application_insights;
   const parsedResume = application.structured_resume;
 
   return (
-    <article className="glass-card rounded-[28px] p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <article className="glass-card rounded-[28px] overflow-hidden transition-colors">
+      <div 
+        className="flex flex-wrap items-start justify-between gap-4 p-6 cursor-pointer hover:bg-white/40 transition"
+        onClick={() => setExpanded(!expanded)}
+      >
         <div>
           <div className="text-2xl font-semibold">{application.applicant_name}</div>
           <div className="mt-1 text-sm text-[var(--muted)]">
@@ -557,13 +719,30 @@ function CandidateDossier({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {application.resume_url && (
+            <a 
+              href={application.resume_url} 
+              target="_blank" 
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mr-2 text-sm font-semibold text-[var(--ink)] hover:underline border border-[var(--line)] rounded-full px-3 py-1 bg-white/50"
+            >
+              View original resume
+            </a>
+          )}
           <StatusBadge status={application.application_status} />
           <ScorePill value={application.fit_score ?? 0} />
           <TonePill label={`Band ${insights?.scoreBand ?? scoreBandFor(application.fit_score ?? 0)}`} />
+          <button className="ml-2 flex items-center justify-center text-[var(--ink)]">
+            <ChevronDown size={20} className={cn("transition-transform duration-300", expanded ? "rotate-180" : "rotate-0")} />
+          </button>
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className={cn("grid transition-all duration-300 ease-in-out", expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
+        <div className="overflow-hidden">
+          <div className="border-t border-[var(--line)] bg-[rgba(255,255,255,0.2)] p-6 pt-5">
+            <div className="flex flex-wrap gap-2">
         {statusActions.map((action) => (
           <button
             key={action.value}
@@ -590,7 +769,7 @@ function CandidateDossier({
         <MetricCard label="Priority" value={priorityLabel(insights?.improvementPriority)} />
       </div>
 
-      <div className="mt-6 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="mt-6 grid items-start gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-5">
           <DetailedMatchBreakdown breakdown={breakdown} />
           <div className="grid gap-4 md:grid-cols-2">
@@ -621,53 +800,58 @@ function CandidateDossier({
           <ListCard title="Recommended interview questions" items={insights?.recommendedQuestions ?? []} />
           <ResumeSnapshotCard structuredResume={parsedResume} />
         </div>
+          </div>
+        </div>
+        </div>
       </div>
     </article>
   );
 }
 
-function ApplicantDiscover({ jobs, onApply }: { jobs: JobRow[]; onApply: (jobId: string) => void }) {
+function ApplicantDiscover({ jobs, appliedJobIds, onApply }: { jobs: JobRow[]; appliedJobIds: string[]; onApply: (jobId: string) => void }) {
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
+    <div className="grid gap-5 grid-cols-1">
       {jobs.length ? (
         jobs.map((job) => {
-          const preview = deriveJobPreview(job);
+          const hasApplied = appliedJobIds.includes(job.id);
 
           return (
-            <article key={job.id} className="glass-card rounded-[28px] p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-semibold">{job.job_title}</h2>
-                  <p className="mt-1 text-[var(--muted)]">
-                    {job.company_name} / {job.location} / {job.workplace_type}
-                  </p>
+            <article key={job.id} className="glass-card flex flex-col gap-6 items-start rounded-[28px] p-6 sm:p-8">
+              <div className="w-full">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-2xl font-semibold">{job.job_title}</h2>
+                    <p className="mt-1 text-[var(--muted)]">
+                      {job.company_name} / {job.location} / {job.workplace_type}
+                    </p>
+                  </div>
+                  <div className="rounded-full bg-[var(--card-strong)] px-3 py-1 text-sm font-semibold">{job.application_count ?? 0} apps</div>
                 </div>
-                <div className="rounded-full bg-[var(--card-strong)] px-3 py-1 text-sm font-semibold">{job.application_count ?? 0} apps</div>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <MiniMetric label="Fit preview" value={`${preview.estimatedFit}%`} />
-                <MiniMetric label="Readiness" value={preview.readinessLabel} />
-                <MiniMetric label="Difficulty" value={preview.difficultyLabel} />
-              </div>
-              <p className="mt-4 line-clamp-4 text-sm leading-7 text-[var(--muted)]">{job.description}</p>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <ListCard title="Likely matching areas" items={preview.matchingAreas} compact />
-                <ListCard title="Likely missing areas" items={preview.missingAreas} compact />
-              </div>
-              <div className="mt-5 text-sm font-semibold text-[var(--olive)]">
-                {formatSalaryRange(job.salary_min, job.salary_max, job.salary_currency)}
-              </div>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button type="button" onClick={() => onApply(job.id)} className="rounded-full bg-[var(--accent)] px-5 py-3 font-semibold text-white">
-                  Apply with resume
-                </button>
-                <span className="rounded-full border border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">{job.employment_type}</span>
+
+                <div className="mt-4 text-sm font-semibold text-[var(--olive)]">
+                  {formatSalaryRange(job.salary_min, job.salary_max, job.salary_currency)}
+                </div>
+
+                <p className="mt-6 whitespace-pre-wrap text-sm leading-7 text-[var(--muted)]">{job.description}</p>
+                
+                <div className="mt-6 border-t border-[var(--line)] pt-6 flex flex-wrap items-center gap-3">
+                  {hasApplied ? (
+                    <span className="rounded-full bg-[rgba(95,111,82,0.1)] px-5 py-3 font-semibold text-[var(--olive)]">
+                      You have already applied
+                    </span>
+                  ) : (
+                    <button type="button" onClick={() => onApply(job.id)} className="rounded-full bg-[var(--accent)] px-5 py-3 font-semibold text-white transition hover:opacity-90">
+                      Apply with resume
+                    </button>
+                  )}
+                  <span className="rounded-full border border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">{job.employment_type}</span>
+                </div>
               </div>
             </article>
           );
         })
       ) : (
-        <EmptyState title="No jobs posted yet" text="Once recruiters publish roles, this area will fill with preview-fit analytics before apply." />
+        <EmptyState title="No jobs posted yet" text="Once recruiters publish roles, they will appear here for you to apply." />
       )}
     </div>
   );
@@ -690,6 +874,7 @@ function ApplicantApplications({ data }: { data: DashboardData }) {
 function ApplicationReport({ application }: { application: ApplicationRow }) {
   const breakdown = application.match_breakdown;
   const insights = application.application_insights;
+  const isAnalyzed = application.analysis_status === "completed";
 
   return (
     <article className="glass-card rounded-[28px] p-6">
@@ -697,56 +882,39 @@ function ApplicationReport({ application }: { application: ApplicationRow }) {
         <div>
           <div className="text-2xl font-semibold">{application.job_title}</div>
           <div className="mt-1 text-sm text-[var(--muted)]">{application.company_name}</div>
-          <p className="mt-3 max-w-3xl text-sm text-[var(--muted)]">
-            {insights?.candidateSummary || application.fit_summary || "Role-fit summary pending."}
+          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
+            {isAnalyzed
+              ? insights?.candidateSummary || application.fit_summary
+              : "We are currently analyzing your submitted resume against this role. Your fit details, missing keywords, and actionable feedback will appear here shortly as soon as analysis completes."}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <StatusBadge status={application.application_status} />
-          <ScorePill value={application.fit_score ?? 0} />
-          <TonePill label={`Priority ${priorityLabel(insights?.improvementPriority)}`} />
+          {isAnalyzed ? <ScorePill value={application.fit_score ?? 0} /> : null}
         </div>
       </div>
 
-      <div className="mt-5">
+      <div className="mt-6">
         <StatusTimeline status={application.application_status} />
       </div>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-5">
-        <MetricCard label="Fit" value={`${application.fit_score ?? 0}%`} />
-        <MetricCard label="Keyword coverage" value={`${breakdown?.atsKeywordCoverage ?? 0}%`} />
-        <MetricCard label="Role alignment" value={`${breakdown?.roleAlignment ?? 0}%`} />
-        <MetricCard label="Readiness" value={`${breakdown?.overallReadiness ?? 0}%`} />
-        <MetricCard label="Score band" value={insights?.scoreBand ?? scoreBandFor(application.fit_score ?? 0)} />
-      </div>
-
-      <div className="mt-6 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="space-y-5">
-          <DetailedMatchBreakdown breakdown={breakdown} applicantMode />
-          <div className="grid gap-4 md:grid-cols-2">
-            <ListCard title="Why this role matches" items={application.strengths} />
-            <ListCard title="What lowers your score" items={application.gaps} />
+      {isAnalyzed ? (
+        <div className="mt-6 grid items-start gap-5 xl:grid-cols-2">
+          <div className="space-y-4">
+            <ListCard title="Why you match this role" items={application.strengths} />
+            <ListCard title="Missing keywords & gaps" items={insights?.missingCriticalSkills?.length ? insights.missingCriticalSkills : application.gaps} />
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <ListCard title="Top missing keywords" items={insights?.missingCriticalSkills ?? []} />
-            <ListCard title="Matching skills" items={insights?.matchingSkills ?? []} />
+
+          <div className="space-y-4">
+            <RecommendationCard
+              title="Improvement focus"
+              body={breakdown?.improvementSuggestions?.[0] || "Review your resume for missing keywords to increase your chances."}
+              accent="accent"
+            />
+            <ListCard title="Actionable next steps" items={breakdown?.improvementSuggestions ?? []} />
           </div>
         </div>
-
-        <div className="space-y-5">
-          <RecommendationCard
-            title="Improvement focus"
-            body={insights?.hiringRecommendation || "Improvement guidance will appear after analysis."}
-            accent="accent"
-          />
-          <ListCard title="Actionable next steps" items={breakdown?.improvementSuggestions ?? []} />
-          <ListCard title="Recommended next-step questions" items={insights?.recommendedQuestions ?? []} />
-          <div className="grid gap-4 md:grid-cols-2">
-            <ListCard title="Experience highlights" items={insights?.experienceHighlights ?? []} compact />
-            <ListCard title="Education highlights" items={insights?.educationHighlights ?? []} compact />
-          </div>
-        </div>
-      </div>
+      ) : null}
     </article>
   );
 }
@@ -876,7 +1044,9 @@ function StatusTimeline({ status }: { status: ApplicationStatus }) {
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-[24px] border border-[var(--line)] bg-white/65 px-4 py-4">
-      <div className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">{label}</div>
+      <div className="truncate text-xs uppercase tracking-[0.25em] text-[var(--muted)]" title={label}>
+        {label}
+      </div>
       <div className="mt-2 text-3xl font-semibold">{value}</div>
     </div>
   );

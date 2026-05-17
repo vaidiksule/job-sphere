@@ -1,6 +1,6 @@
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
-import { extractResumeTextFromImage } from "@/lib/gemini";
+import { extractRawTextWithGemini } from "@/lib/gemini";
 
 export class ResumeExtractionError extends Error {
   constructor(message: string) {
@@ -16,7 +16,7 @@ export async function extractResumeText(file: File) {
 
   if (mimeType.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp"].some((extension) => fileName.endsWith(extension))) {
     try {
-      const extracted = await extractResumeTextFromImage({
+      const extracted = await extractRawTextWithGemini({
         bytesBase64: buffer.toString("base64"),
         mimeType: mimeType || guessImageMimeType(fileName),
         fileName: file.name,
@@ -30,12 +30,26 @@ export async function extractResumeText(file: File) {
 
   if (fileName.endsWith(".pdf")) {
     try {
-      const parser = new PDFParse({ data: buffer });
-      const parsed = await parser.getText();
-      await parser.destroy();
-      return cleanText(parsed.text);
-    } catch {
-      throw new ResumeExtractionError("We couldn't read that PDF cleanly. For now, please upload a PNG/JPG image of the resume or use DOCX/TXT.");
+      // Best approach: Send the PDF to Gemini directly natively first
+      console.log("Attempting native Gemini PDF parse...");
+      const extracted = await extractRawTextWithGemini({
+        bytesBase64: buffer.toString("base64"),
+        mimeType: "application/pdf",
+        fileName: file.name,
+      });
+      return cleanText(extracted);
+    } catch (geminiError) {
+      console.warn("Gemini PDF extraction failed/skipped, falling back to pdf-parse.", geminiError);
+      
+      try {
+        // Fallback: Local parsing
+        const parser = new PDFParse({ data: buffer });
+        const parsed = await parser.getText();
+        await parser.destroy();
+        return cleanText(parsed.text);
+      } catch {
+        throw new ResumeExtractionError("We couldn't read that PDF cleanly. For now, please upload a PNG/JPG image of the resume or use DOCX/TXT.");
+      }
     }
   }
 

@@ -39,10 +39,34 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "Could not read resume content." }, { status: 400 });
     }
 
+    let resumeUrl: string | undefined = undefined;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (supabaseUrl && anonKey) {
+      const filePath = `${job.id}/${user.id}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const response = await fetch(`${supabaseUrl}/storage/v1/object/resumes/${filePath}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${anonKey}`,
+          "apikey": anonKey,
+          "Content-Type": file.type || "application/pdf"
+        },
+        body: file 
+      });
+
+      if (response.ok) {
+        resumeUrl = `${supabaseUrl}/storage/v1/object/public/resumes/${filePath}`;
+      } else {
+        console.error("Supabase Storage Upload failed:", await response.text());
+      }
+    }
+
     const application = await createApplication({
       jobId: job.id,
       applicantId: user.id,
       resumeFileName: file.name,
+      resumeUrl,
       resumeText,
     });
 
