@@ -23,7 +23,8 @@ export function AdminLoginForm() {
       });
 
       if (!response.ok) {
-        setError("Invalid credentials");
+        const payload = await response.json().catch(() => ({}));
+        setError(typeof payload.error === "string" ? payload.error : "Invalid credentials");
         return;
       }
 

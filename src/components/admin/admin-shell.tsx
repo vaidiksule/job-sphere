@@ -11,7 +11,10 @@ import {
   LogOut,
   Users,
 } from "lucide-react";
+import { AdminApplicationDetail } from "@/components/admin/admin-application-detail";
 import { AdminChartsPanel } from "@/components/admin/admin-charts";
+import { AdminInsightsRow } from "@/components/admin/admin-insights-row";
+import { AdminJobDetail } from "@/components/admin/admin-job-detail";
 import type { AdminDashboardData } from "@/lib/types";
 
 const tabs = [
@@ -30,6 +33,16 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
   const [userQuery, setUserQuery] = useState("");
   const [candidateQuery, setCandidateQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+
+  const selectedJob = data.jobs.find((job) => job.id === selectedJobId) ?? null;
+  const selectedApplication =
+    data.applications.find((application) => application.id === selectedApplicationId) ?? null;
+  const selectedJobApplications = useMemo(
+    () => (selectedJobId ? data.applications.filter((application) => application.jobId === selectedJobId) : []),
+    [data.applications, selectedJobId],
+  );
 
   const filteredUsers = useMemo(() => {
     const query = userQuery.trim().toLowerCase();
@@ -113,6 +126,25 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
           </aside>
 
           <section className="space-y-5">
+            {selectedApplication ? (
+              <AdminApplicationDetail
+                application={selectedApplication}
+                onClose={() => setSelectedApplicationId(null)}
+              />
+            ) : null}
+
+            {!selectedApplication && selectedJob ? (
+              <AdminJobDetail
+                job={selectedJob}
+                applications={selectedJobApplications}
+                onClose={() => setSelectedJobId(null)}
+                onOpenApplication={(applicationId) => {
+                  setSelectedJobId(null);
+                  setSelectedApplicationId(applicationId);
+                }}
+              />
+            ) : null}
+
             {tab === "overview" ? (
               <>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -125,6 +157,25 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
                   <MetricCard label="Avg fit" value={`${data.overview.avgFitScore}%`} />
                   <MetricCard label="Pending analysis" value={data.overview.pendingAnalyses} />
                 </div>
+
+                <div className="glass-card rounded-[28px] p-6">
+                  <h2 className="text-xl font-semibold">Application pipeline</h2>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Processed means analysis completed. Open a job or candidate from the Jobs / Candidates tabs for details.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <MetricCard label="Processed" value={data.overview.processedApplications} />
+                    <MetricCard label="Under review" value={data.overview.underReview} />
+                    <MetricCard label="Shortlisted" value={data.overview.shortlisted} />
+                    <MetricCard label="Hired" value={data.overview.hired} />
+                    <MetricCard label="Submitted" value={data.overview.submitted} />
+                    <MetricCard label="Interview" value={data.overview.interview} />
+                    <MetricCard label="Rejected" value={data.overview.rejected} />
+                  </div>
+                </div>
+
+                <AdminInsightsRow insights={data.insights} />
+
                 <AdminChartsPanel charts={data.charts} />
               </>
             ) : null}
@@ -177,7 +228,8 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
                         <th className="py-2 pr-4">Recruiter</th>
                         <th className="py-2 pr-4">Resumes</th>
                         <th className="py-2 pr-4">Avg fit</th>
-                        <th className="py-2">Status</th>
+                        <th className="py-2 pr-4">Status</th>
+                        <th className="py-2">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -189,6 +241,18 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
                           <td className="py-3 pr-4">{job.applicationCount}</td>
                           <td className="py-3 pr-4">{job.avgFitScore}%</td>
                           <td className="py-3 capitalize">{job.status}</td>
+                          <td className="py-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedApplicationId(null);
+                                setSelectedJobId(job.id);
+                              }}
+                              className="text-sm font-semibold text-[var(--olive)] hover:underline"
+                            >
+                              View applicants
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -229,7 +293,8 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
                         <th className="py-2 pr-4">Fit</th>
                         <th className="py-2 pr-4">Status</th>
                         <th className="py-2 pr-4">Analysis</th>
-                        <th className="py-2">Applied</th>
+                        <th className="py-2 pr-4">Applied</th>
+                        <th className="py-2">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -246,7 +311,19 @@ export function AdminShell({ data, username }: { data: AdminDashboardData; usern
                           <td className="py-3 pr-4">{application.fitScore ?? "—"}%</td>
                           <td className="py-3 pr-4 capitalize">{application.applicationStatus.replace("_", " ")}</td>
                           <td className="py-3 pr-4 capitalize">{application.analysisStatus}</td>
-                          <td className="py-3 text-[var(--muted)]">{formatDate(application.appliedAt)}</td>
+                          <td className="py-3 pr-4 text-[var(--muted)]">{formatDate(application.appliedAt)}</td>
+                          <td className="py-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedJobId(null);
+                                setSelectedApplicationId(application.id);
+                              }}
+                              className="text-sm font-semibold text-[var(--olive)] hover:underline"
+                            >
+                              Open
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

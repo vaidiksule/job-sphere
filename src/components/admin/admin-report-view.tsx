@@ -36,6 +36,33 @@ export function AdminReportView({ data, generatedAt }: { data: AdminDashboardDat
           </div>
         </section>
 
+        <section className="glass-card rounded-[28px] p-6 print:break-inside-avoid">
+          <h2 className="text-2xl font-semibold">Key insights</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryItem label="Hire rate" value={`${data.insights.hireRate}%`} />
+            <SummaryItem label="Shortlist rate" value={`${data.insights.shortlistRate}%`} />
+            <SummaryItem label="Interview rate" value={`${data.insights.interviewRate}%`} />
+            <SummaryItem label="Analysis completion" value={`${data.insights.analysisCompletionRate}%`} />
+            <SummaryItem label="Apps per job" value={data.insights.avgApplicantsPerJob} />
+            <SummaryItem label="Apps per applicant" value={data.insights.avgApplicationsPerApplicant} />
+            <SummaryItem label="High-fit (81+)" value={data.insights.highFitCandidates} />
+            <SummaryItem label="Jobs with 0 apps" value={data.insights.jobsWithZeroApplicants} />
+          </div>
+        </section>
+
+        <section className="glass-card rounded-[28px] p-6 print:break-inside-avoid">
+          <h2 className="text-2xl font-semibold">Application pipeline</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryItem label="Processed" value={data.overview.processedApplications} />
+            <SummaryItem label="Under review" value={data.overview.underReview} />
+            <SummaryItem label="Shortlisted" value={data.overview.shortlisted} />
+            <SummaryItem label="Hired" value={data.overview.hired} />
+            <SummaryItem label="Submitted" value={data.overview.submitted} />
+            <SummaryItem label="Interview" value={data.overview.interview} />
+            <SummaryItem label="Rejected" value={data.overview.rejected} />
+          </div>
+        </section>
+
         <section className="page-break glass-card rounded-[28px] p-6 print:break-inside-avoid">
           <h2 className="text-2xl font-semibold">Analytics</h2>
           <div className="mt-4">

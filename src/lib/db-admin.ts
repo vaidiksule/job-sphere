@@ -1,14 +1,16 @@
-import { ensureDatabase, sql } from "@/lib/db";
+import { ensureDatabase, normalizeApplication, sql } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/admin-password";
 import type {
   AdminActivityItem,
   AdminApplicationListRow,
   AdminCharts,
   AdminDashboardData,
+  AdminInsights,
   AdminJobRow,
   AdminOverview,
   AdminUserRow,
   ApplicationStatus,
+  ImprovementPriority,
   ScoreBand,
   UserRole,
 } from "@/lib/types";
@@ -35,13 +37,29 @@ export async function ensureAdminAccount(username: string, password: string) {
 
 export async function seedAdminAccountIfEmpty() {
   await ensureDatabase();
-  await ensureAdminAccount("vaidikadmin", "vaidikadmin");
+
+  const existingDefault = await sql`
+    SELECT id FROM admin_accounts WHERE username = 'vaidikadmin' LIMIT 1
+  `;
+  if (!existingDefault.length) {
+    await ensureAdminAccount("vaidikadmin", "vaidikadmin");
+  }
 
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;
   if (username && password) {
-    await ensureAdminAccount(username, password);
+    const existing = await sql`
+      SELECT id FROM admin_accounts WHERE username = ${username} LIMIT 1
+    `;
+    if (!existing.length) {
+      await ensureAdminAccount(username, password);
+    }
   }
+}
+
+/** Reset admin password (e.g. fix a truncated hash in Supabase). */
+export async function resetAdminPassword(username: string, password: string) {
+  await ensureAdminAccount(username, password);
 }
 
 export async function getAdminAccountByUsername(username: string) {
@@ -58,8 +76,12 @@ export async function getAdminAccountByUsername(username: string) {
 export async function verifyAdminCredentials(username: string, password: string) {
   const account = await getAdminAccountByUsername(username);
   if (!account) return null;
-  const valid = await verifyPassword(password, account.password_hash);
-  if (!valid) return null;
+  try {
+    const valid = await verifyPassword(password, account.password_hash);
+    if (!valid) return null;
+  } catch {
+    return null;
+  }
   return { id: String(account.id), username: account.username };
 }
 
@@ -109,7 +131,14 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       SELECT
         COUNT(*)::int AS total_applications,
         ROUND(AVG(fit_score))::int AS avg_fit,
-        COUNT(*) FILTER (WHERE analysis_status IS DISTINCT FROM 'completed')::int AS pending_analyses
+        COUNT(*) FILTER (WHERE analysis_status IS DISTINCT FROM 'completed')::int AS pending_analyses,
+        COUNT(*) FILTER (WHERE analysis_status = 'completed')::int AS processed_applications,
+        COUNT(*) FILTER (WHERE application_status = 'submitted')::int AS submitted,
+        COUNT(*) FILTER (WHERE application_status = 'under_review')::int AS under_review,
+        COUNT(*) FILTER (WHERE application_status = 'shortlisted')::int AS shortlisted,
+        COUNT(*) FILTER (WHERE application_status = 'interview')::int AS interview,
+        COUNT(*) FILTER (WHERE application_status = 'rejected')::int AS rejected,
+        COUNT(*) FILTER (WHERE application_status = 'hired')::int AS hired
       FROM applications
     `,
     sql`
@@ -143,6 +172,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
         j.job_title,
         j.company_name,
         j.location,
+        j.workplace_type,
         j.status,
         j.created_at,
         u.full_name AS recruiter_name,
@@ -164,6 +194,11 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
         a.application_status,
         a.analysis_status,
         a.fit_score,
+        a.fit_summary,
+        a.strengths,
+        a.gaps,
+        a.match_breakdown,
+        a.application_insights,
         a.applied_at,
         u.full_name AS applicant_name,
         u.email AS applicant_email,
@@ -204,6 +239,13 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     totalApplications: Number(appStats[0]?.total_applications ?? 0),
     avgFitScore: Number(appStats[0]?.avg_fit ?? 0),
     pendingAnalyses: Number(appStats[0]?.pending_analyses ?? 0),
+    processedApplications: Number(appStats[0]?.processed_applications ?? 0),
+    submitted: Number(appStats[0]?.submitted ?? 0),
+    underReview: Number(appStats[0]?.under_review ?? 0),
+    shortlisted: Number(appStats[0]?.shortlisted ?? 0),
+    interview: Number(appStats[0]?.interview ?? 0),
+    rejected: Number(appStats[0]?.rejected ?? 0),
+    hired: Number(appStats[0]?.hired ?? 0),
   };
 
   const adminUsers: AdminUserRow[] = users.map((row) => ({
@@ -224,6 +266,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     jobTitle: String(row.job_title),
     companyName: String(row.company_name),
     location: String(row.location),
+    workplaceType: String(row.workplace_type ?? "unspecified"),
     status: String(row.status),
     recruiterName: String(row.recruiter_name),
     recruiterEmail: String(row.recruiter_email),
@@ -232,22 +275,31 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     createdAt: String(row.created_at),
   }));
 
-  const adminApplications: AdminApplicationListRow[] = applications.map((row) => ({
-    id: String(row.id),
-    jobId: String(row.job_id),
-    applicantId: String(row.applicant_id),
-    applicantName: String(row.applicant_name),
-    applicantEmail: String(row.applicant_email),
-    jobTitle: String(row.job_title),
-    companyName: String(row.company_name),
-    applicationStatus: String(row.application_status) as ApplicationStatus,
-    analysisStatus: String(row.analysis_status ?? "pending"),
-    fitScore: row.fit_score === null ? null : Number(row.fit_score),
-    appliedAt: String(row.applied_at),
-    resumeFileName: String(row.resume_file_name),
-  }));
+  const adminApplications: AdminApplicationListRow[] = applications.map((row) => {
+    const normalized = normalizeApplication(row as Record<string, unknown>);
+    return {
+      id: String(row.id),
+      jobId: String(row.job_id),
+      applicantId: String(row.applicant_id),
+      applicantName: String(row.applicant_name),
+      applicantEmail: String(row.applicant_email),
+      jobTitle: String(row.job_title),
+      companyName: String(row.company_name),
+      applicationStatus: normalized.application_status,
+      analysisStatus: String(row.analysis_status ?? "pending"),
+      fitScore: row.fit_score === null ? null : Number(row.fit_score),
+      appliedAt: String(row.applied_at),
+      resumeFileName: String(row.resume_file_name),
+      fitSummary: normalized.fit_summary,
+      strengths: normalized.strengths,
+      gaps: normalized.gaps,
+      matchBreakdown: normalized.match_breakdown ?? null,
+      applicationInsights: normalized.application_insights ?? null,
+    };
+  });
 
-  const charts = buildAdminCharts(adminUsers, adminApplications);
+  const insights = buildAdminInsights(overview, adminUsers, adminJobs, adminApplications);
+  const charts = buildAdminCharts(adminUsers, adminJobs, adminApplications);
 
   const activity: AdminActivityItem[] = [
     ...recentApplications.map((row) => ({
@@ -270,6 +322,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
 
   return {
     overview,
+    insights,
     charts,
     users: adminUsers,
     jobs: adminJobs,
@@ -278,7 +331,34 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   };
 }
 
-function buildAdminCharts(users: AdminUserRow[], applications: AdminApplicationListRow[]): AdminCharts {
+function buildAdminInsights(
+  overview: AdminOverview,
+  users: AdminUserRow[],
+  jobs: AdminJobRow[],
+  applications: AdminApplicationListRow[],
+): AdminInsights {
+  const totalApplications = overview.totalApplications || 1;
+  const applicantCount = users.filter((user) => user.role === "applicant").length || overview.applicants || 1;
+
+  return {
+    hireRate: Math.round((overview.hired / totalApplications) * 100),
+    shortlistRate: Math.round((overview.shortlisted / totalApplications) * 100),
+    interviewRate: Math.round((overview.interview / totalApplications) * 100),
+    analysisCompletionRate: Math.round((overview.processedApplications / totalApplications) * 100),
+    avgApplicantsPerJob:
+      jobs.length > 0 ? Math.round((overview.totalApplications / jobs.length) * 10) / 10 : 0,
+    avgApplicationsPerApplicant:
+      Math.round((overview.totalApplications / applicantCount) * 10) / 10,
+    highFitCandidates: applications.filter((application) => (application.fitScore ?? 0) >= 81).length,
+    jobsWithZeroApplicants: jobs.filter((job) => job.applicationCount === 0).length,
+  };
+}
+
+function buildAdminCharts(
+  users: AdminUserRow[],
+  jobs: AdminJobRow[],
+  applications: AdminApplicationListRow[],
+): AdminCharts {
   const roleCounts = new Map<string, number>();
   for (const user of users) {
     const role = user.role ?? "unassigned";
@@ -325,6 +405,65 @@ function buildAdminCharts(users: AdminUserRow[], applications: AdminApplicationL
     }
   }
 
+  const analysisCounts = new Map<string, number>();
+  for (const application of applications) {
+    const status = application.analysisStatus || "pending";
+    analysisCounts.set(status, (analysisCounts.get(status) ?? 0) + 1);
+  }
+
+  const workplaceCounts = new Map<string, number>();
+  for (const job of jobs) {
+    const type = job.workplaceType || "unspecified";
+    workplaceCounts.set(type, (workplaceCounts.get(type) ?? 0) + 1);
+  }
+
+  const companyCounts = new Map<string, number>();
+  for (const application of applications) {
+    companyCounts.set(
+      application.companyName,
+      (companyCounts.get(application.companyName) ?? 0) + 1,
+    );
+  }
+
+  const priorityCounts = new Map<ImprovementPriority, number>();
+  for (const priority of ["low", "medium", "high"] as ImprovementPriority[]) {
+    priorityCounts.set(priority, 0);
+  }
+  for (const application of applications) {
+    const priority = application.applicationInsights?.improvementPriority;
+    if (!priority) continue;
+    priorityCounts.set(priority, (priorityCounts.get(priority) ?? 0) + 1);
+  }
+
+  const fitWeeks = new Map<string, { total: number; count: number }>();
+  for (const application of applications) {
+    if (application.fitScore === null) continue;
+    const key = weekKey(new Date(application.appliedAt));
+    const existing = fitWeeks.get(key) ?? { total: 0, count: 0 };
+    existing.total += application.fitScore;
+    existing.count += 1;
+    fitWeeks.set(key, existing);
+  }
+
+  const jobBuckets = new Map<string, number>();
+  for (const label of ["0", "1–3", "4–7", "8+"]) jobBuckets.set(label, 0);
+  for (const job of jobs) {
+    const count = job.applicationCount;
+    const bucket = count === 0 ? "0" : count <= 3 ? "1–3" : count <= 7 ? "4–7" : "8+";
+    jobBuckets.set(bucket, (jobBuckets.get(bucket) ?? 0) + 1);
+  }
+
+  const openJobs = jobs.filter((job) => job.status === "open").length;
+  const closedJobs = jobs.length - openJobs;
+
+  const funnelStages = [
+    { stage: "Submitted", count: statusCounts.get("submitted") ?? 0 },
+    { stage: "Under review", count: statusCounts.get("under_review") ?? 0 },
+    { stage: "Shortlisted", count: statusCounts.get("shortlisted") ?? 0 },
+    { stage: "Interview", count: statusCounts.get("interview") ?? 0 },
+    { stage: "Hired", count: statusCounts.get("hired") ?? 0 },
+  ];
+
   return {
     usersByRole: Array.from(roleCounts.entries()).map(([role, count]) => ({ role, count })),
     signupsByWeek: sortWeekEntries(signupWeeks),
@@ -340,6 +479,47 @@ function buildAdminCharts(users: AdminUserRow[], applications: AdminApplicationL
     topJobsByApplicants: Array.from(jobCounts.values())
       .sort((left, right) => right.count - left.count)
       .slice(0, 8),
+    analysisStatus: Array.from(analysisCounts.entries())
+      .map(([status, count]) => ({ status, count }))
+      .sort((left, right) => right.count - left.count),
+    workplaceTypes: Array.from(workplaceCounts.entries())
+      .map(([type, count]) => ({ type, count }))
+      .sort((left, right) => right.count - left.count),
+    topCompanies: Array.from(companyCounts.entries())
+      .map(([company, count]) => ({ company, count }))
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 8),
+    avgFitByJob: jobs
+      .filter((job) => job.applicationCount > 0 && job.avgFitScore > 0)
+      .sort((left, right) => right.avgFitScore - left.avgFitScore)
+      .slice(0, 8)
+      .map((job) => ({
+        jobTitle: job.jobTitle,
+        companyName: job.companyName,
+        avgFit: job.avgFitScore,
+        applicants: job.applicationCount,
+      })),
+    hiringFunnel: funnelStages,
+    applicationsPerJobBuckets: ["0", "1–3", "4–7", "8+"].map((bucket) => ({
+      bucket,
+      jobCount: jobBuckets.get(bucket) ?? 0,
+    })),
+    improvementPriority: (["low", "medium", "high"] as ImprovementPriority[]).map((priority) => ({
+      priority,
+      count: priorityCounts.get(priority) ?? 0,
+    })),
+    avgFitByWeek: Array.from(fitWeeks.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .slice(-8)
+      .map(([week, stats]) => ({
+        week,
+        avgFit: Math.round(stats.total / stats.count),
+        applications: stats.count,
+      })),
+    openVsClosedJobs: [
+      { status: "Open", count: openJobs },
+      { status: "Closed", count: closedJobs },
+    ],
   };
 }
 

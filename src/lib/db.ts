@@ -8,7 +8,16 @@ if (!connectionString) {
   console.warn("DATABASE_URL is not set. Database-backed features will fail until it is configured.");
 }
 
-export const sql = postgres(connectionString ?? "postgres://placeholder:placeholder@localhost/placeholder");
+function getPostgresOptions(url: string) {
+  const isLocal = url.includes("localhost") || url.includes("127.0.0.1");
+  if (isLocal) return { max: 1 };
+  return { ssl: "require" as const, max: 1 };
+}
+
+export const sql = postgres(
+  connectionString ?? "postgres://placeholder:placeholder@localhost/placeholder",
+  connectionString ? getPostgresOptions(connectionString) : { max: 1 },
+);
 
 let initialized = false;
 

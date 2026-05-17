@@ -30,6 +30,31 @@ Copy `.env.example` to `.env.local` and fill in:
 - Printable report: `/admin/report` (use **Export PDF** → browser print → Save as PDF)
 - Admin auth uses username/password only (not Google OAuth)
 
+## Google OAuth on Vercel
+
+In [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → your OAuth client:
+
+**Authorized JavaScript origins**
+
+- `http://localhost:3000`
+- `https://job-sphere-gules.vercel.app`
+
+**Authorized redirect URIs**
+
+- `http://localhost:3000/api/auth/callback/google`
+- `https://job-sphere-gules.vercel.app/api/auth/callback/google`
+
+On Vercel, set environment variables:
+
+- `AUTH_SECRET` (or `NEXTAUTH_SECRET`)
+- `AUTH_GOOGLE_ID`
+- `AUTH_GOOGLE_SECRET`
+- `DATABASE_URL`
+- `NEXTAUTH_URL=https://job-sphere-gules.vercel.app` (recommended for production)
+- `NEXT_PUBLIC_APP_URL=https://job-sphere-gules.vercel.app`
+
+Do not add a trailing slash on origins or redirect URIs.
+
 ## Mock data seed (no Gemini)
 
 Populate the database with recruiters, jobs, applicants, and **pre-filled mock analysis** (no AI calls):

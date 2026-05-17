@@ -6,7 +6,9 @@ import {
   verifyAdminCredentials,
 } from "@/lib/db-admin";
 import {
+  assertAdminSessionSecret,
   clearAdminSessionCookie,
+  createAdminSessionToken,
   getAdminSession,
   setAdminSessionCookie,
 } from "@/lib/admin-session";
@@ -17,12 +19,13 @@ export async function ensureAdminBootstrap() {
 }
 
 export async function loginAdmin(username: string, password: string) {
+  assertAdminSessionSecret();
   await ensureAdminBootstrap();
   const account = await verifyAdminCredentials(username, password);
   if (!account) return null;
   const session: AdminSession = { adminId: account.id, username: account.username };
-  await setAdminSessionCookie(session);
-  return session;
+  const token = await createAdminSessionToken(session);
+  return { session, token };
 }
 
 export async function logoutAdmin() {

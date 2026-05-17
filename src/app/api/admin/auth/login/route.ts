@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loginAdmin } from "@/lib/admin-auth";
+import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 
 export async function POST(request: Request) {
   try {
@@ -11,14 +12,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const session = await loginAdmin(username, password);
-    if (!session) {
+    const result = await loginAdmin(username, password);
+    if (!result) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    return NextResponse.json({ ok: true });
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set(ADMIN_SESSION_COOKIE, result.token, getAdminSessionCookieOptions());
+    return response;
   } catch (error) {
     console.error("Admin login failed:", error);
-    return NextResponse.json({ error: "Unable to sign in" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unable to sign in";
+    const isConfig = message.includes("AUTH_SECRET") || message.includes("ADMIN_SESSION_SECRET");
+    return NextResponse.json(
+      {
+        error: isConfig
+          ? "Server is missing AUTH_SECRET. Add it in Vercel environment variables and redeploy."
+          : "Unable to sign in. Check server logs.",
+      },
+      { status: isConfig ? 503 : 500 },
+    );
   }
 }

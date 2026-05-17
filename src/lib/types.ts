@@ -91,6 +91,13 @@ export type AdminOverview = {
   totalApplications: number;
   avgFitScore: number;
   pendingAnalyses: number;
+  processedApplications: number;
+  submitted: number;
+  underReview: number;
+  shortlisted: number;
+  interview: number;
+  rejected: number;
+  hired: number;
 };
 
 export type AdminUserRow = {
@@ -111,6 +118,7 @@ export type AdminJobRow = {
   jobTitle: string;
   companyName: string;
   location: string;
+  workplaceType: string;
   status: string;
   recruiterName: string;
   recruiterEmail: string;
@@ -132,6 +140,22 @@ export type AdminApplicationListRow = {
   fitScore: number | null;
   appliedAt: string;
   resumeFileName: string;
+  fitSummary: string | null;
+  strengths: string[];
+  gaps: string[];
+  matchBreakdown: MatchBreakdown | null;
+  applicationInsights: ApplicationInsights | null;
+};
+
+export type AdminInsights = {
+  hireRate: number;
+  shortlistRate: number;
+  interviewRate: number;
+  analysisCompletionRate: number;
+  avgApplicantsPerJob: number;
+  avgApplicationsPerApplicant: number;
+  highFitCandidates: number;
+  jobsWithZeroApplicants: number;
 };
 
 export type AdminCharts = {
@@ -141,6 +165,15 @@ export type AdminCharts = {
   statusBreakdown: Array<{ status: ApplicationStatus; count: number }>;
   scoreBands: Array<{ band: ScoreBand; count: number }>;
   topJobsByApplicants: Array<{ jobTitle: string; companyName: string; count: number }>;
+  analysisStatus: Array<{ status: string; count: number }>;
+  workplaceTypes: Array<{ type: string; count: number }>;
+  topCompanies: Array<{ company: string; count: number }>;
+  avgFitByJob: Array<{ jobTitle: string; companyName: string; avgFit: number; applicants: number }>;
+  hiringFunnel: Array<{ stage: string; count: number }>;
+  applicationsPerJobBuckets: Array<{ bucket: string; jobCount: number }>;
+  improvementPriority: Array<{ priority: ImprovementPriority; count: number }>;
+  avgFitByWeek: Array<{ week: string; avgFit: number; applications: number }>;
+  openVsClosedJobs: Array<{ status: string; count: number }>;
 };
 
 export type AdminActivityItem = {
@@ -153,6 +186,7 @@ export type AdminActivityItem = {
 
 export type AdminDashboardData = {
   overview: AdminOverview;
+  insights: AdminInsights;
   charts: AdminCharts;
   users: AdminUserRow[];
   jobs: AdminJobRow[];
