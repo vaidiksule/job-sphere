@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 import NextAuth from "next-auth";
 import { authOptions } from "@/lib/auth";

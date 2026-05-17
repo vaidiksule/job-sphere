@@ -49,7 +49,7 @@ On Vercel, set environment variables:
 - `AUTH_SECRET` (or `NEXTAUTH_SECRET`)
 - `AUTH_GOOGLE_ID`
 - `AUTH_GOOGLE_SECRET`
-- `DATABASE_URL`
+- `DATABASE_URL` — use the **Transaction pooler** URI from Supabase → Project Settings → Database (host like `aws-1-ap-south-1.pooler.supabase.com:6543`, user `postgres.[project-ref]`). Do **not** use `db.[project-ref].supabase.co` on Vercel; that host often does not resolve (`ENOTFOUND`).
 - `NEXTAUTH_URL=https://job-sphere-gules.vercel.app` (recommended for production)
 - `NEXT_PUBLIC_APP_URL=https://job-sphere-gules.vercel.app`
 

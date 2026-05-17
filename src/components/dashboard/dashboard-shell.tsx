@@ -92,13 +92,21 @@ export function DashboardShell({ data }: { data: DashboardData }) {
   });
 
   const activeJob = useMemo(() => data.jobs.find((job) => job.id === applyJobId) ?? null, [applyJobId, data.jobs]);
-  const viewingJob = useMemo(() => data.recruiterJobs.find((job) => job.id === viewJobId) ?? null, [viewJobId, data.recruiterJobs]);
+  const viewingJob = useMemo(() => {
+    if (!viewJobId) return null;
+    return data.jobs.find((job) => job.id === viewJobId) ?? data.recruiterJobs.find((job) => job.id === viewJobId) ?? null;
+  }, [viewJobId, data.jobs, data.recruiterJobs]);
+  const viewingJobApplied = viewingJob
+    ? data.applicantApplications.some((application) => application.job_id === viewingJob.id)
+    : false;
   const pendingAnalyses = data.recruiterApplications.filter((application) => application.analysis_status !== "completed").length;
 
   useEffect(() => {
-    async function analyzePending() {
-      if (!isRecruiter || pendingAnalyses === 0 || analyzing) return;
+    if (!isRecruiter || pendingAnalyses === 0) return;
 
+    let cancelled = false;
+
+    async function analyzePending() {
       setAnalyzing(true);
       setStatus(`Updating ${pendingAnalyses} application${pendingAnalyses === 1 ? "" : "s"}...`);
 
@@ -106,9 +114,10 @@ export function DashboardShell({ data }: { data: DashboardData }) {
         const response = await fetch("/api/applications/analyze-pending", { method: "POST" });
         const payload = await readJsonSafely(response);
 
+        if (cancelled) return;
+
         if (!response.ok) {
           setStatus(payload.error ?? "Could not update applications.");
-          setAnalyzing(false);
           return;
         }
 
@@ -119,14 +128,17 @@ export function DashboardShell({ data }: { data: DashboardData }) {
           setStatus("");
         }
       } catch {
-        setStatus("Could not update applications.");
+        if (!cancelled) setStatus("Could not update applications.");
       } finally {
-        setAnalyzing(false);
+        if (!cancelled) setAnalyzing(false);
       }
     }
 
     analyzePending();
-  }, [analyzing, isRecruiter, pendingAnalyses, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isRecruiter, pendingAnalyses, router]);
 
   async function submitJob(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -240,7 +252,7 @@ export function DashboardShell({ data }: { data: DashboardData }) {
   return (
     <div className="grid-bg min-h-screen px-4 py-5 sm:px-6">
       <div className="app-shell space-y-5">
-        <header className="glass-card flex flex-col gap-6 rounded-[32px] p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+        <header className="glass-card flex flex-col gap-6 rounded-[32px] p-6 sm:p-8 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
             <div className="font-mono text-xs uppercase tracking-[0.35em] text-[var(--olive)]">JobSphere</div>
             <h1 className="mt-3 font-[var(--font-heading)] text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -252,7 +264,7 @@ export function DashboardShell({ data }: { data: DashboardData }) {
                 : "Your application reports now include richer fit analytics, status tracking, score breakdowns, and next-step guidance for each role."}
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid w-full gap-3 grid-cols-2 sm:grid-cols-4 lg:w-auto lg:min-w-[42rem]">
             <MetricCard label={isRecruiter ? "Open roles" : "Jobs live"} value={data.metrics.openRoles} />
             <MetricCard label={isRecruiter ? "Applications" : "Applications sent"} value={data.metrics.totalApplications} />
             <MetricCard label="Avg fit" value={`${data.metrics.avgFitScore}%`} />
@@ -335,7 +347,14 @@ export function DashboardShell({ data }: { data: DashboardData }) {
                 setFilter={setPipelineFilter} 
               />
             ) : null}
-            {!isRecruiter && tab === "discover" ? <ApplicantDiscover jobs={data.jobs} appliedJobIds={data.applicantApplications.map(a => a.job_id)} onApply={setApplyJobId} /> : null}
+            {!isRecruiter && tab === "discover" ? (
+              <ApplicantDiscover
+                jobs={data.jobs}
+                appliedJobIds={data.applicantApplications.map((application) => application.job_id)}
+                onApply={setApplyJobId}
+                onViewDetails={setViewJobId}
+              />
+            ) : null}
             {!isRecruiter && tab === "applied" ? <ApplicantApplications data={data} /> : null}
           </section>
         </div>
@@ -808,7 +827,17 @@ function CandidateDossier({
   );
 }
 
-function ApplicantDiscover({ jobs, appliedJobIds, onApply }: { jobs: JobRow[]; appliedJobIds: string[]; onApply: (jobId: string) => void }) {
+function ApplicantDiscover({
+  jobs,
+  appliedJobIds,
+  onApply,
+  onViewDetails,
+}: {
+  jobs: JobRow[];
+  appliedJobIds: string[];
+  onApply: (jobId: string) => void;
+  onViewDetails: (jobId: string) => void;
+}) {
   return (
     <div className="grid gap-5 grid-cols-1">
       {jobs.length ? (
@@ -821,30 +850,42 @@ function ApplicantDiscover({ jobs, appliedJobIds, onApply }: { jobs: JobRow[]; a
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-2xl font-semibold">{job.job_title}</h2>
-                    <p className="mt-1 text-[var(--muted)]">
-                      {job.company_name} / {job.location} / {job.workplace_type}
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      {job.company_name} · {job.location} · {job.workplace_type} · {job.employment_type}
                     </p>
                   </div>
-                  <div className="rounded-full bg-[var(--card-strong)] px-3 py-1 text-sm font-semibold">{job.application_count ?? 0} apps</div>
+                  <div className="shrink-0 rounded-full bg-[var(--card-strong)] px-3 py-1 text-sm font-semibold whitespace-nowrap">
+                    {job.application_count ?? 0} applicants
+                  </div>
                 </div>
 
                 <div className="mt-4 text-sm font-semibold text-[var(--olive)]">
                   {formatSalaryRange(job.salary_min, job.salary_max, job.salary_currency)}
                 </div>
 
-                <p className="mt-6 whitespace-pre-wrap text-sm leading-7 text-[var(--muted)]">{job.description}</p>
-                
+                <p className="mt-6 line-clamp-3 text-sm leading-7 text-[var(--muted)]">{job.description}</p>
+
                 <div className="mt-6 border-t border-[var(--line)] pt-6 flex flex-wrap items-center gap-3">
                   {hasApplied ? (
                     <span className="rounded-full bg-[rgba(95,111,82,0.1)] px-5 py-3 font-semibold text-[var(--olive)]">
                       You have already applied
                     </span>
                   ) : (
-                    <button type="button" onClick={() => onApply(job.id)} className="rounded-full bg-[var(--accent)] px-5 py-3 font-semibold text-white transition hover:opacity-90">
+                    <button
+                      type="button"
+                      onClick={() => onApply(job.id)}
+                      className="rounded-full bg-[var(--accent)] px-5 py-3 font-semibold text-white transition hover:opacity-90"
+                    >
                       Apply with resume
                     </button>
                   )}
-                  <span className="rounded-full border border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">{job.employment_type}</span>
+                  <button
+                    type="button"
+                    onClick={() => onViewDetails(job.id)}
+                    className="rounded-full border border-[var(--line)] bg-white/70 px-5 py-3 text-sm font-semibold transition hover:bg-white"
+                  >
+                    View job details
+                  </button>
                 </div>
               </div>
             </article>
@@ -1043,10 +1084,10 @@ function StatusTimeline({ status }: { status: ApplicationStatus }) {
 
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[24px] border border-[var(--line)] bg-white/65 px-4 py-4">
-      <div className="truncate text-xs uppercase tracking-[0.25em] text-[var(--muted)]" title={label}>
+    <div className="min-w-[9rem] rounded-[24px] border border-[var(--line)] bg-white/65 px-4 py-4">
+      <p className="min-h-[2.25rem] text-[11px] font-semibold uppercase leading-snug tracking-wide text-[var(--muted)] sm:text-xs">
         {label}
-      </div>
+      </p>
       <div className="mt-2 text-3xl font-semibold">{value}</div>
     </div>
   );

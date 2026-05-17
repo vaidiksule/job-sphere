@@ -1,7 +1,31 @@
 import type { NextAuthOptions } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import { getServerSession } from "next-auth";
 import Google from "next-auth/providers/google";
 import { getUserByEmail, upsertUser } from "@/lib/db";
+import type { UserRole } from "@/lib/types";
+
+type AppUserRow = {
+  id: string;
+  email: string;
+  full_name: string;
+  image_url: string | null;
+  role: string | null;
+  onboarding_complete: boolean;
+  company_name: string | null;
+  headline: string | null;
+};
+
+function applyAppUserToToken(token: JWT, appUser: AppUserRow) {
+  token.appUserId = appUser.id;
+  token.role = (appUser.role as UserRole | null) ?? undefined;
+  token.onboardingComplete = appUser.onboarding_complete;
+  token.companyName = appUser.company_name;
+  token.headline = appUser.headline;
+  token.name = appUser.full_name;
+  token.picture = appUser.image_url;
+  return token;
+}
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
@@ -16,26 +40,24 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user }) {
-      if (!user.email) return false;
-      await upsertUser({
-        email: user.email,
-        fullName: user.name ?? user.email.split("@")[0],
-        imageUrl: user.image,
-      });
-      return true;
+      return Boolean(user.email);
     },
-    async jwt({ token }) {
+    async jwt({ token, user, account, trigger }) {
       if (!token.email) return token;
-      const appUser = await getUserByEmail(token.email);
-      if (appUser) {
-        token.appUserId = appUser.id;
-        token.role = appUser.role;
-        token.onboardingComplete = appUser.onboarding_complete;
-        token.companyName = appUser.company_name;
-        token.headline = appUser.headline;
-        token.name = appUser.full_name;
-        token.picture = appUser.image_url;
+
+      if (user && account) {
+        const appUser = (await upsertUser({
+          email: user.email!,
+          fullName: user.name ?? user.email!.split("@")[0],
+          imageUrl: user.image ?? null,
+        })) as AppUserRow;
+        return applyAppUserToToken(token, appUser);
       }
+
+      if (token.appUserId && trigger !== "update") return token;
+
+      const appUser = (await getUserByEmail(token.email)) as AppUserRow | null;
+      if (appUser) return applyAppUserToToken(token, appUser);
       return token;
     },
     async session({ session, token }) {

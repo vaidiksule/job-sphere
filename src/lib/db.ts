@@ -24,6 +24,12 @@ let initialized = false;
 export async function ensureDatabase() {
   if (initialized || !connectionString) return;
 
+  // On Vercel, schema is already provisioned — skip ~15 sequential DDL round-trips per cold start.
+  if (process.env.VERCEL) {
+    initialized = true;
+    return;
+  }
+
   await sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`;
 
   await sql`

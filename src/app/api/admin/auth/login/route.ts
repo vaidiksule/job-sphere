@@ -24,11 +24,17 @@ export async function POST(request: Request) {
     console.error("Admin login failed:", error);
     const message = error instanceof Error ? error.message : "Unable to sign in";
     const isConfig = message.includes("AUTH_SECRET") || message.includes("ADMIN_SESSION_SECRET");
+    const isDbHost =
+      message.includes("ENOTFOUND") ||
+      message.includes("getaddrinfo") ||
+      message.includes("db.") && message.includes("supabase.co");
     return NextResponse.json(
       {
         error: isConfig
           ? "Server is missing AUTH_SECRET. Add it in Vercel environment variables and redeploy."
-          : "Unable to sign in. Check server logs.",
+          : isDbHost
+            ? "Database host unreachable. In Vercel, set DATABASE_URL to the Supabase Transaction pooler URI (not db.*.supabase.co), then redeploy."
+            : "Unable to sign in. Check server logs.",
       },
       { status: isConfig ? 503 : 500 },
     );
